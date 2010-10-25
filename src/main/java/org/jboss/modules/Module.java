@@ -134,7 +134,7 @@ public final class Module {
     /**
      * The complete collection of all paths.  Initially, the paths are uninitialized.
      */
-    private volatile Paths<LocalLoader, Dependency> paths = Paths.none();
+    private volatile Paths<LocalLoader, Dependency> paths = Paths.<LocalLoader, Dependency>none().clone();
 
     private static final AtomicReferenceFieldUpdater<Module, Paths<LocalLoader, Dependency>> pathsUpdater
             = unsafeCast(AtomicReferenceFieldUpdater.newUpdater(Module.class, Paths.class, "paths"));
@@ -754,55 +754,57 @@ public final class Module {
     }
 
     private void linkImports(final Paths<LocalLoader, Dependency> paths) throws ModuleLoadException {
-        final Set<Module> visited = new HashSet<Module>();
-        visited.add(this);
-        final Map<String, List<LocalLoader>> newMap = new HashMap<String, List<LocalLoader>>();
+        synchronized (paths) {
+            final Set<Module> visited = new HashSet<Module>();
+            visited.add(this);
+            final Map<String, List<LocalLoader>> newMap = new HashMap<String, List<LocalLoader>>();
 
-        final Dependency[] dependencies = paths.getSourceList(NO_DEPENDENCIES);
+            final Dependency[] dependencies = paths.getSourceList(NO_DEPENDENCIES);
 
-        // Iterate dependencies and get their export paths.
-        for (Dependency dependency : dependencies) {
-            final PathFilter importFilter = dependency.getImportFilter();
-            if (importFilter == PathFilters.rejectAll()) {
-                // we do not import anything from this dependency
-                // kind of a silly dependency, isn't it?
-                continue;
+            // Iterate dependencies and get their export paths.
+            for (Dependency dependency : dependencies) {
+                final PathFilter importFilter = dependency.getImportFilter();
+                if (importFilter == PathFilters.rejectAll()) {
+                    // we do not import anything from this dependency
+                    // kind of a silly dependency, isn't it?
+                    continue;
+                }
+
+                if (dependency instanceof LocalDependency) {
+                    final LocalDependency localDependency = (LocalDependency) dependency;
+                    final LocalLoader localLoader = localDependency.getLocalLoader();
+                    for (String path : localDependency.getPaths()) {
+                        if (importFilter.accept(path)) {
+                            addToMapList(newMap, path, localLoader);
+                        }
+                    }
+                } else if (dependency instanceof ModuleDependency) {
+                    final ModuleDependency moduleDependency = (ModuleDependency) dependency;
+                    final Module module;
+                    final ModuleLoader moduleLoader = moduleDependency.getModuleLoader();
+                    final ModuleIdentifier id = moduleDependency.getIdentifier();
+
+                    module = moduleLoader.loadModule(id, visited);
+
+                    // Get the set that they export
+                    final Map<String, List<LocalLoader>> pathsMap = module.getPaths(true);
+                    for (String path : pathsMap.keySet()) {
+                        // Check it against what we import
+                        if (importFilter.accept(path)) {
+                            addToMapList(newMap, path, pathsMap.get(path));
+                        }
+                    }
+                } else {
+                    throw new IllegalArgumentException("Invalid dependency " + dependency + " encountered");
+                }
             }
 
-            if (dependency instanceof LocalDependency) {
-                final LocalDependency localDependency = (LocalDependency) dependency;
-                final LocalLoader localLoader = localDependency.getLocalLoader();
-                for (String path : localDependency.getPaths()) {
-                    if (importFilter.accept(path)) {
-                        addToMapList(newMap, path, localLoader);
-                    }
-                }
-            } else if (dependency instanceof ModuleDependency) {
-                final ModuleDependency moduleDependency = (ModuleDependency) dependency;
-                final Module module;
-                final ModuleLoader moduleLoader = moduleDependency.getModuleLoader();
-                final ModuleIdentifier id = moduleDependency.getIdentifier();
+            // Final optimizing step
+            removeDuplicatesFromLists(newMap.values());
 
-                module = moduleLoader.loadModule(id, visited);
-
-                // Get the set that they export
-                final Map<String, List<LocalLoader>> pathsMap = module.getPaths(true);
-                for (String path : pathsMap.keySet()) {
-                    // Check it against what we import
-                    if (importFilter.accept(path)) {
-                        addToMapList(newMap, path, pathsMap.get(path));
-                    }
-                }
-            } else {
-                throw new IllegalArgumentException("Invalid dependency " + dependency + " encountered");
-            }
+            final Paths<LocalLoader, Dependency> newPaths = new Paths<LocalLoader, Dependency>(dependencies, newMap, paths.getExportedPaths());
+            pathsUpdater.compareAndSet(this, paths, newPaths);
         }
-
-        // Final optimizing step
-        removeDuplicatesFromLists(newMap.values());
-
-        final Paths<LocalLoader, Dependency> newPaths = new Paths<LocalLoader, Dependency>(dependencies, newMap, paths.getExportedPaths());
-        pathsUpdater.compareAndSet(this, paths, newPaths);
     }
 
     private Map<String, List<LocalLoader>> getPaths(final boolean exportsOnly) {

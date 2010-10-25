@@ -33,7 +33,7 @@ import java.util.Map;
  *
  * @author <a href="mailto:david.lloyd@redhat.com">David M. Lloyd</a>
  */
-final class Paths<T, A> {
+final class Paths<T, A> implements Cloneable {
     private final A[] sourceList;
     private final Map<String, List<T>> allPaths;
     private final Map<String, List<T>> exportedPaths;
@@ -66,5 +66,14 @@ final class Paths<T, A> {
     @SuppressWarnings({ "unchecked" })
     static <T, A> Paths<T, A> none() {
         return (Paths<T, A>) NONE;
+    }
+
+    @SuppressWarnings({ "unchecked" })
+    protected Paths<T, A> clone() {
+        try {
+            return (Paths<T, A>) super.clone();
+        } catch (CloneNotSupportedException e) {
+            throw new IllegalStateException(e);
+        }
     }
 }
