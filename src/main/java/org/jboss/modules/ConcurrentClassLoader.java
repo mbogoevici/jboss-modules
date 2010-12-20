@@ -242,7 +242,11 @@ public abstract class ConcurrentClassLoader extends SecureClassLoader {
         for (String s : Module.systemPackages) {
             if (className.startsWith(s)) {
                 // always delegate to system
-                return findSystemClass(className);
+                final Class<?> systemClass = findSystemClass(className);
+                if (resolve) {
+                    resolveClass(systemClass);
+                }
+                return systemClass;
             }
         }
         if (Thread.holdsLock(this) && Thread.currentThread() != LoaderThreadHolder.LOADER_THREAD) {
