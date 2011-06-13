@@ -49,6 +49,7 @@ import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
  * @author <a href="mailto:jbailey@redhat.com">John Bailey</a>
  * @author <a href="mailto:david.lloyd@redhat.com">David M. Lloyd</a>
  * @author thomas.diesler@jboss.com
+ * @author Marius Bogoevici
  *
  * @apiviz.landmark
  */
@@ -520,6 +521,15 @@ public class ModuleClassLoader extends ConcurrentClassLoader {
      */
     public final Module getModule() {
         return module;
+    }
+
+    /**
+     * Get the transformer for this class loader
+     *
+     * @return the transformer, if set
+     */
+    public ClassFileTransformer getTransformer() {
+        return transformer;
     }
 
     /**
